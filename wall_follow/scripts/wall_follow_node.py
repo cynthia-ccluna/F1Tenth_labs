@@ -1,3 +1,4 @@
+import math
 import rclpy
 from rclpy.node import Node
 
@@ -16,18 +17,29 @@ class WallFollow(Node):
         drive_topic = '/drive'
 
         # TODO: create subscribers and publishers
-
+        self.subscription = self.create_subscription(
+            LaserScan, 
+            lidarscan_topic, 
+            self.scan_callback, 
+            10)
+        self.publisher_ = self.create_publisher(
+            AckermannDriveStamped, 
+            drive_topic, 
+            10)
+        
         # TODO: set PID gains
-        # self.kp = 
-        # self.kd = 
-        # self.ki = 
+        self.kp = 1
+        self.kd = 0
+        self.ki = 0.01
 
         # TODO: store history
-        # self.integral = 
-        # self.prev_error = 
-        # self.error = 
+        self.integral = 0
+        self.prev_error = 0
+        self.error = 0
 
         # TODO: store any necessary values you think you'll need
+        self.lookahead = 0.5
+        self.desired_dist = 1
 
     def get_range(self, range_data, angle):
         """
@@ -43,7 +55,13 @@ class WallFollow(Node):
         """
 
         #TODO: implement
-        return 0.0
+        angle_increment = (range_data.angle_max-range_data.angle_min)/len(range_data.ranges)
+        index = int((angle-range_data.angle_min)/angle_increment)
+        index = max(0, min(index, len(range_data.ranges)-1))
+        range_val = range_data.ranges[index]
+        if math.isnan(range_val) or math.isinf(range_val):
+            return 10
+        return range_data[index]
 
     def get_error(self, range_data, dist):
         """
@@ -58,7 +76,16 @@ class WallFollow(Node):
         """
 
         #TODO:implement
-        return 0.0
+        angle_a = math.radians(45)
+        angle_b = math.radians(90)
+        theta = angle_b-angle_a
+        a = self.get_range(self, range_data, angle_a)
+        b = self.get_range(self, range_data, angle_b)
+        alpha = math.atan2((a*math.cos(theta)-b)/(a*math.sin(theta)))
+        d_curr = b*math.cos(alpha)
+        d_pred = d_curr+self.lookahead*math.sin(alpha)
+        error = dist-d_pred
+        return error
 
     def pid_control(self, error, velocity):
         """
@@ -73,8 +100,16 @@ class WallFollow(Node):
         """
         angle = 0.0
         # TODO: Use kp, ki & kd to implement a PID controller
+        self.integral += error
+        derivative = error-self.prev_error
+        steering_angle = self.kp*error + self.kd*derivative + self.ki*self.intergral
+        self.prev_error = error
+        steering_angle = max(-0.4, min(steering_angle, 0.4))
         drive_msg = AckermannDriveStamped()
         # TODO: fill in drive message and publish
+        drive_msg.drive.speed = velocity
+        drive_msg.drive.steering_angle = steering_angle
+        self.publisher_.publish(drive_msg)
 
     def scan_callback(self, msg):
         """
@@ -86,8 +121,9 @@ class WallFollow(Node):
         Returns:
             None
         """
-        error = 0.0 # TODO: replace with error calculated by get_error()
-        velocity = 0.0 # TODO: calculate desired car velocity based on error
+        error = get_error(self, range_data, self.desired_dist) # TODO: replace with error calculated by get_error()
+        # TODO: calculate desired car velocity based on error
+        if 
         self.pid_control(error, velocity) # TODO: actuate the car with PID
 
 
