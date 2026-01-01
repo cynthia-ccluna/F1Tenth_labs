@@ -12,6 +12,7 @@ class WallFollow(Node):
     """
     def __init__(self):
         super().__init__('wall_follow_node')
+        self.get_logger().info("!!!!!!!! 這是 2026 版本 !!!!!!!!")
 
         lidarscan_topic = '/scan'
         drive_topic = '/drive'
@@ -61,7 +62,7 @@ class WallFollow(Node):
         range_val = range_data.ranges[index]
         if math.isnan(range_val) or math.isinf(range_val):
             return 10
-        return range_data[index]
+        return range_val
 
     def get_error(self, range_data, dist):
         """
@@ -79,9 +80,9 @@ class WallFollow(Node):
         angle_a = math.radians(45)
         angle_b = math.radians(90)
         theta = angle_b-angle_a
-        a = self.get_range(self, range_data, angle_a)
-        b = self.get_range(self, range_data, angle_b)
-        alpha = math.atan2((a*math.cos(theta)-b)/(a*math.sin(theta)))
+        a = self.get_range(range_data, angle_a)
+        b = self.get_range(range_data, angle_b)
+        alpha = math.atan2((a*math.cos(theta)-b),(a*math.sin(theta)))
         d_curr = b*math.cos(alpha)
         d_pred = d_curr+self.lookahead*math.sin(alpha)
         error = dist-d_pred
@@ -102,7 +103,7 @@ class WallFollow(Node):
         # TODO: Use kp, ki & kd to implement a PID controller
         self.integral += error
         derivative = error-self.prev_error
-        steering_angle = self.kp*error + self.kd*derivative + self.ki*self.intergral
+        steering_angle = self.kp*error + self.kd*derivative + self.ki*self.integral
         self.prev_error = error
         steering_angle = max(-0.4, min(steering_angle, 0.4))
         drive_msg = AckermannDriveStamped()
@@ -121,23 +122,41 @@ class WallFollow(Node):
         Returns:
             None
         """
-        error = get_error(self, range_data, self.desired_dist) # TODO: replace with error calculated by get_error()
-        # TODO: calculate desired car velocity based on error
-        if 
-        self.pid_control(error, velocity) # TODO: actuate the car with PID
+        print(">>>>>> CALLBACK TRIGGERED <<<<<<")
+        try:
+            error = self.get_error(msg, self.desired_dist) # TODO: replace with error calculated by get_error()
+            # TODO: calculate desired car velocity based on error
+            velocity = 1.5 if abs(error) < 0.2 else 0.5 
+            self.pid_control(error, velocity) # TODO: actuate the car with PID
+        except Exception as e:
+            # 如果出錯，這裡會印出紅色的報錯訊息，讓我們知道為什麼沒 publisher
+            self.get_logger().error(f"Callback 崩潰了！原因: {e}")
 
+
+# def main(args=None):
+#     rclpy.init(args=args)
+#     print("WallFollow Initialized")
+#     wall_follow_node = WallFollow()
+#     rclpy.spin(wall_follow_node)
+
+#     # Destroy the node explicitly
+#     # (optional - otherwise it will be done automatically
+#     # when the garbage collector destroys the node object)
+#     wall_follow_node.destroy_node()
+#     rclpy.shutdown()
 
 def main(args=None):
     rclpy.init(args=args)
-    print("WallFollow Initialized")
-    wall_follow_node = WallFollow()
-    rclpy.spin(wall_follow_node)
-
-    # Destroy the node explicitly
-    # (optional - otherwise it will be done automatically
-    # when the garbage collector destroys the node object)
-    wall_follow_node.destroy_node()
-    rclpy.shutdown()
+    # 使用 print 並加上 flush=True，保證訊息不會被存在緩衝區
+    print(">>> 節點嘗試啟動中...", flush=True)
+    try:
+        wall_follow_node = WallFollow()
+        print(">>> 節點物件建立成功！", flush=True)
+        rclpy.spin(wall_follow_node)
+    except Exception as e:
+        print(f">>> 崩潰原因: {e}", flush=True)
+    finally:
+        rclpy.shutdown()
 
 
 if __name__ == '__main__':
